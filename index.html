@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pro_edits — Cinematic Video Editor</title>
+<meta name="description" content="pro_edits — cinematic video editing & colour grading in DaVinci Resolve.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@1,500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#07070a; --bg2:#0e0e13; --card:#12121a; --line:#23232e;
+  --text:#ecebe6; --mute:#8d8c95;
+  --accent:#ff4d2e;      /* resolve-ish red-orange */
+  --accent2:#ffb340;     /* amber */
+  --teal:#2fd4c4;
+  --display:'Bebas Neue',sans-serif;
+  --body:'Inter',sans-serif;
+  --mono:'JetBrains Mono',monospace;
+  --serif:'Playfair Display',serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--body);overflow-x:hidden;line-height:1.6}
+a{color:inherit;text-decoration:none}
+img{max-width:100%;display:block}
+::selection{background:var(--accent);color:#000}
+::-webkit-scrollbar{width:8px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:#2a2a36;border-radius:8px}
+
+/* film grain + vignette */
+.grain{position:fixed;inset:-50%;width:200%;height:200%;pointer-events:none;z-index:999;opacity:.07;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  animation:grain 1s steps(6) infinite}
+@keyframes grain{0%{transform:translate(0,0)}20%{transform:translate(-4%,3%)}40%{transform:translate(3%,-5%)}60%{transform:translate(-5%,-2%)}80%{transform:translate(4%,4%)}100%{transform:translate(0,0)}}
+.vignette{position:fixed;inset:0;pointer-events:none;z-index:998;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.55) 100%)}
+
+/* loader */
+#loader{position:fixed;inset:0;background:#000;z-index:2000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;transition:opacity .8s,visibility .8s}
+#loader.done{opacity:0;visibility:hidden}
+#loader .count{font-family:var(--display);font-size:clamp(80px,18vw,200px);line-height:1;color:var(--text);letter-spacing:4px}
+#loader .bar{width:min(320px,70vw);height:2px;background:#222;overflow:hidden}
+#loader .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .1s}
+#loader small{font-family:var(--mono);font-size:12px;letter-spacing:3px;color:var(--mute)}
+
+/* cursor */
+.cursor{position:fixed;width:34px;height:34px;border:1px solid var(--accent);border-radius:50%;pointer-events:none;z-index:1500;transform:translate(-50%,-50%);transition:width .25s,height .25s,background .25s;mix-blend-mode:difference}
+.cursor.hover{width:70px;height:70px;background:rgba(255,77,46,.25)}
+@media(hover:none){.cursor{display:none}}
+
+/* nav */
+nav{position:fixed;top:0;left:0;right:0;z-index:900;display:flex;justify-content:space-between;align-items:center;padding:20px 5vw;transition:background .3s,padding .3s}
+nav.scrolled{background:rgba(7,7,10,.85);backdrop-filter:blur(14px);padding:14px 5vw;border-bottom:1px solid var(--line)}
+.logo{font-family:var(--display);font-size:30px;letter-spacing:2px}
+.logo span{color:var(--accent)}
+.links{display:flex;gap:34px;font-family:var(--mono);font-size:12px;letter-spacing:2px;text-transform:uppercase}
+.links a{position:relative;color:var(--mute);transition:color .2s}
+.links a:hover{color:var(--text)}
+.links a::after{content:'';position:absolute;left:0;bottom:-6px;width:0;height:1px;background:var(--accent);transition:width .3s}
+.links a:hover::after{width:100%}
+.burger{display:none;background:none;border:0;color:var(--text);font-size:26px;cursor:pointer}
+@media(max-width:800px){
+  .burger{display:block}
+  .links{position:fixed;inset:0;background:rgba(7,7,10,.97);flex-direction:column;align-items:center;justify-content:center;gap:36px;font-size:18px;transform:translateY(-100%);transition:transform .5s}
+  .links.open{transform:none}
+  .burger{position:relative;z-index:2}
+}
+
+section{padding:130px 5vw;position:relative}
+.tag{font-family:var(--mono);font-size:12px;letter-spacing:4px;color:var(--accent);text-transform:uppercase;display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.tag::before{content:'';width:40px;height:1px;background:var(--accent)}
+h2{font-family:var(--display);font-size:clamp(46px,8vw,104px);line-height:.95;letter-spacing:2px;font-weight:400}
+h2 em{font-family:var(--serif);font-style:italic;font-weight:500;color:var(--accent2);letter-spacing:0}
+
+/* reveal */
+.rv{opacity:0;transform:translateY(40px);transition:opacity .9s ease,transform .9s ease}
+.rv.in{opacity:1;transform:none}
+
+/* HERO */
+#home{min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;overflow:hidden;padding-top:120px}
+.hero-bg{position:absolute;inset:0;z-index:-1;
+  background:
+   radial-gradient(60% 50% at 20% 30%,rgba(255,77,46,.22),transparent 70%),
+   radial-gradient(50% 50% at 80% 70%,rgba(47,212,196,.18),transparent 70%),
+   radial-gradient(40% 40% at 60% 20%,rgba(255,179,64,.12),transparent 70%),
+   var(--bg);
+  animation:drift 14s ease-in-out infinite alternate}
+@keyframes drift{to{filter:hue-rotate(25deg) brightness(1.1);transform:scale(1.06)}}
+.bars::before,.bars::after{content:'';position:absolute;left:0;right:0;height:9vh;background:#000;z-index:2}
+.bars::before{top:0}.bars::after{bottom:0}
+.rec{font-family:var(--mono);font-size:12px;letter-spacing:3px;color:var(--mute);display:flex;align-items:center;gap:10px;margin-bottom:26px}
+.rec i{width:10px;height:10px;border-radius:50%;background:#ff2a2a;animation:blink 1.2s infinite}
+@keyframes blink{50%{opacity:.15}}
+.hero-title{font-family:var(--display);font-size:clamp(70px,18vw,270px);line-height:.85;letter-spacing:6px;
+  background:linear-gradient(180deg,#fff 20%,#6a6a72);-webkit-background-clip:text;background-clip:text;color:transparent;position:relative}
+.hero-title b{color:var(--accent);-webkit-text-fill-color:var(--accent)}
+.hero-title::before,.hero-title::after{content:attr(data-t);position:absolute;inset:0;opacity:.0;mix-blend-mode:screen}
+.hero-title:hover::before{opacity:.8;color:var(--teal);-webkit-text-fill-color:var(--teal);transform:translate(-4px,0);transition:.15s}
+.hero-title:hover::after{opacity:.8;color:var(--accent);-webkit-text-fill-color:var(--accent);transform:translate(4px,0);transition:.15s}
+.hero-sub{font-family:var(--serif);font-style:italic;font-size:clamp(18px,2.6vw,32px);color:var(--accent2);margin:22px 0 10px;min-height:1.4em}
+.hero-sub .caret{display:inline-block;width:2px;height:1em;background:var(--accent2);margin-left:4px;vertical-align:-3px;animation:blink .8s infinite}
+.hero-p{max-width:560px;color:var(--mute);font-weight:300}
+.cta{display:flex;gap:16px;margin-top:38px;flex-wrap:wrap;justify-content:center}
+.btn{font-family:var(--mono);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:16px 34px;border:1px solid var(--accent);position:relative;overflow:hidden;transition:color .3s;z-index:0;cursor:pointer;background:none;color:var(--text)}
+.btn::before{content:'';position:absolute;inset:0;background:var(--accent);transform:translateX(-101%);transition:transform .4s;z-index:-1}
+.btn:hover::before{transform:none}.btn:hover{color:#000}
+.btn.solid{background:var(--accent);color:#000}
+.btn.solid::before{background:var(--text)}
+.scroll-cue{position:absolute;bottom:13vh;font-family:var(--mono);font-size:11px;letter-spacing:3px;color:var(--mute);display:flex;flex-direction:column;align-items:center;gap:10px}
+.scroll-cue i{width:1px;height:46px;background:linear-gradient(var(--accent),transparent);animation:down 1.6s infinite}
+@keyframes down{0%{transform:scaleY(0);transform-origin:top}50%{transform:scaleY(1);transform-origin:top}51%{transform-origin:bottom}100%{transform:scaleY(0);transform-origin:bottom}}
+.timecode{position:absolute;right:5vw;bottom:12vh;font-family:var(--mono);font-size:13px;color:var(--mute);letter-spacing:2px}
+@media(max-width:700px){.timecode{display:none}}
+
+/* marquee */
+.marquee{border-block:1px solid var(--line);padding:22px 0;overflow:hidden;background:var(--bg2)}
+.marquee div{display:flex;gap:60px;width:max-content;animation:mq 28s linear infinite;font-family:var(--display);font-size:42px;letter-spacing:4px;color:#2c2c38}
+.marquee span b{color:var(--accent);font-weight:400}
+@keyframes mq{to{transform:translateX(-50%)}}
+
+/* ABOUT */
+.about{display:grid;grid-template-columns:1fr 1.1fr;gap:6vw;align-items:center;margin-top:60px}
+@media(max-width:900px){.about{grid-template-columns:1fr}}
+.portrait{position:relative;aspect-ratio:4/5;max-width:460px;width:100%;margin:auto}
+.portrait .frame{position:absolute;inset:0;border:1px solid var(--accent);transform:translate(18px,18px)}
+.portrait .ph{position:absolute;inset:0;overflow:hidden;background:linear-gradient(160deg,#1c1c26,#0b0b10);display:flex;align-items:center;justify-content:center}
+.portrait img{width:100%;height:100%;object-fit:cover;filter:grayscale(.2) contrast(1.1);position:absolute;inset:0}
+.portrait .ph span{font-family:var(--display);font-size:200px;color:#262633;letter-spacing:6px}
+.portrait .ph::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,transparent 55%,rgba(7,7,10,.85)),linear-gradient(120deg,rgba(255,77,46,.18),rgba(47,212,196,.15));mix-blend-mode:overlay}
+.portrait .cap{position:absolute;left:18px;bottom:16px;z-index:3;font-family:var(--mono);font-size:11px;letter-spacing:2px;color:#fff}
+.portrait .cap b{color:var(--accent)}
+.corner{position:absolute;width:22px;height:22px;border:2px solid var(--text);z-index:3}
+.corner.tl{top:12px;left:12px;border-right:0;border-bottom:0}.corner.tr{top:12px;right:12px;border-left:0;border-bottom:0}
+.corner.bl{bottom:12px;left:12px;border-right:0;border-top:0}.corner.br{bottom:12px;right:12px;border-left:0;border-top:0}
+.about-text p{color:var(--mute);margin:20px 0;font-weight:300;font-size:17px}
+.about-text p strong{color:var(--text);font-weight:500}
+.quote{font-family:var(--serif);font-style:italic;font-size:22px;color:var(--accent2);border-left:2px solid var(--accent);padding-left:18px;margin:26px 0}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:34px}
+.stat{border-top:1px solid var(--line);padding-top:16px}
+.stat b{font-family:var(--display);font-size:56px;font-weight:400;line-height:1;display:block}
+.stat small{font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--mute);text-transform:uppercase}
+
+/* WORK */
+.work-head{display:flex;justify-content:space-between;align-items:end;flex-wrap:wrap;gap:24px;margin-bottom:50px}
+.filters{display:flex;gap:10px;flex-wrap:wrap}
+.filters button{font-family:var(--mono);font-size:11px;letter-spacing:2px;text-transform:uppercase;background:none;border:1px solid var(--line);color:var(--mute);padding:10px 18px;cursor:pointer;transition:.25s}
+.filters button:hover,.filters button.on{border-color:var(--accent);color:var(--text);background:rgba(255,77,46,.1)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:26px}
+.card{position:relative;aspect-ratio:16/10;overflow:hidden;background:var(--card);cursor:pointer;border:1px solid var(--line);transition:transform .4s,border-color .4s}
+.card:hover{transform:translateY(-8px);border-color:var(--accent)}
+.card .thumb{position:absolute;inset:0;transition:transform .8s}
+.card:hover .thumb{transform:scale(1.08)}
+.card .thumb img{width:100%;height:100%;object-fit:cover}
+.card::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,transparent 35%,rgba(0,0,0,.9))}
+.card .play{position:absolute;top:50%;left:50%;width:66px;height:66px;margin:-33px;border-radius:50%;border:1px solid #fff;z-index:3;display:flex;align-items:center;justify-content:center;opacity:0;transform:scale(.7);transition:.35s;backdrop-filter:blur(6px);background:rgba(255,77,46,.35)}
+.card:hover .play{opacity:1;transform:none}
+.card .play::before{content:'';border-left:16px solid #fff;border-block:10px solid transparent;margin-left:5px}
+.card .info{position:absolute;left:20px;right:20px;bottom:18px;z-index:3}
+.card .info small{font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--accent);text-transform:uppercase}
+.card .info h3{font-family:var(--display);font-size:32px;font-weight:400;letter-spacing:1.5px;line-height:1.1}
+.card .dur{position:absolute;top:14px;right:14px;z-index:3;font-family:var(--mono);font-size:11px;background:rgba(0,0,0,.65);padding:4px 9px;letter-spacing:1px}
+.card.hide{display:none}
+/* generated thumbnails (replace with real images) */
+.t1{background:linear-gradient(135deg,#ff4d2e,#2a0a3a 60%,#05060f)}
+.t2{background:linear-gradient(135deg,#2fd4c4,#0b2a4a 60%,#05060f)}
+.t3{background:linear-gradient(135deg,#ffb340,#5a1d0a 60%,#05060f)}
+.t4{background:linear-gradient(135deg,#8a5cff,#1a0a3a 60%,#05060f)}
+.t5{background:linear-gradient(135deg,#ff3d81,#2a0a1a 60%,#05060f)}
+.t6{background:linear-gradient(135deg,#3dff9a,#0a2a1a 60%,#05060f)}
+.note{margin-top:30px;font-family:var(--mono);font-size:12px;color:var(--mute);letter-spacing:1px}
+.note code{color:var(--accent2)}
+
+/* MODAL */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:1800;display:none;align-items:center;justify-content:center;padding:4vw}
+.modal.open{display:flex}
+.modal .box{width:min(1000px,100%);position:relative}
+.modal .vid{aspect-ratio:16/9;background:#000;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;text-align:center;color:var(--mute);font-family:var(--mono);font-size:13px;padding:20px}
+.modal iframe,.modal video{width:100%;height:100%;border:0}
+.modal h4{font-family:var(--display);font-size:34px;font-weight:400;letter-spacing:2px;margin-top:14px}
+.modal .x{position:absolute;top:-46px;right:0;background:none;border:0;color:#fff;font-size:34px;cursor:pointer}
+
+/* DAVINCI WORKFLOW */
+#workflow{background:var(--bg2);border-block:1px solid var(--line)}
+.pages{display:flex;gap:6px;margin:50px 0 0;flex-wrap:wrap}
+.pages button{flex:1;min-width:110px;background:#0a0a0f;border:1px solid var(--line);color:var(--mute);padding:16px 10px;cursor:pointer;font-family:var(--mono);font-size:11px;letter-spacing:2px;text-transform:uppercase;transition:.25s;display:flex;flex-direction:column;align-items:center;gap:8px}
+.pages button span{font-size:20px}
+.pages button:hover{color:var(--text)}
+.pages button.on{color:#fff;border-color:var(--accent);background:linear-gradient(180deg,rgba(255,77,46,.18),#0a0a0f);box-shadow:inset 0 -2px 0 var(--accent)}
+.page-body{border:1px solid var(--line);border-top:0;background:#0a0a0f;padding:40px;display:grid;grid-template-columns:1.1fr 1fr;gap:40px;align-items:center;min-height:300px}
+@media(max-width:800px){.page-body{grid-template-columns:1fr;padding:24px}}
+.page-body h3{font-family:var(--display);font-size:48px;font-weight:400;letter-spacing:2px}
+.page-body p{color:var(--mute);font-weight:300;margin-top:10px}
+.page-body ul{list-style:none;margin-top:18px;display:grid;gap:8px;font-family:var(--mono);font-size:12px;letter-spacing:1px;color:var(--text)}
+.page-body li::before{content:'▸ ';color:var(--accent)}
+.vis{aspect-ratio:16/10;background:#050508;border:1px solid var(--line);position:relative;overflow:hidden}
+.vis svg{width:100%;height:100%}
+
+/* timeline */
+.timeline{margin-top:50px;border:1px solid var(--line);background:#07070b;padding:18px;position:relative;overflow:hidden}
+.timeline .head{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--mute);margin-bottom:12px}
+.track{display:flex;align-items:center;gap:10px;margin:6px 0}
+.track label{font-family:var(--mono);font-size:10px;color:var(--mute);width:28px}
+.lane{flex:1;height:34px;position:relative;background:#0d0d13;border-radius:2px}
+.clip{position:absolute;top:3px;bottom:3px;border-radius:3px;font-family:var(--mono);font-size:10px;padding:5px 8px;color:#000;overflow:hidden;white-space:nowrap;letter-spacing:1px;transform-origin:left;transform:scaleX(0);transition:transform 1s cubic-bezier(.2,.8,.2,1)}
+.timeline.in .clip{transform:none}
+.c-v{background:var(--accent)}.c-v2{background:var(--accent2)}.c-a{background:var(--teal)}.c-fx{background:#8a5cff;color:#fff}
+.playhead{position:absolute;top:44px;bottom:12px;width:2px;background:#fff;left:56px;box-shadow:0 0 12px #fff;animation:ph 9s linear infinite;z-index:3}
+.playhead::before{content:'';position:absolute;top:-6px;left:-6px;border:7px solid transparent;border-top-color:#fff}
+@keyframes ph{from{left:56px}to{left:calc(100% - 18px)}}
+
+/* SKILLS */
+.skills{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px;margin-top:50px}
+.skill{background:var(--card);border:1px solid var(--line);padding:30px;transition:.35s;position:relative;overflow:hidden}
+.skill:hover{border-color:var(--accent);transform:translateY(-6px)}
+.skill .ic{font-size:30px;margin-bottom:14px}
+.skill h4{font-family:var(--display);font-size:30px;font-weight:400;letter-spacing:1.5px}
+.skill p{color:var(--mute);font-size:14px;font-weight:300;margin:8px 0 18px}
+.meter{height:3px;background:#22222c}
+.meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width 1.6s cubic-bezier(.2,.8,.2,1)}
+.tools{display:flex;gap:12px;flex-wrap:wrap;margin-top:40px}
+.tools span{font-family:var(--mono);font-size:12px;letter-spacing:1px;border:1px solid var(--line);padding:10px 16px;color:var(--mute);transition:.25s}
+.tools span:hover{color:var(--text);border-color:var(--teal)}
+
+/* PROCESS */
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0;margin-top:50px;border:1px solid var(--line)}
+.step{padding:34px 28px;border-right:1px solid var(--line);position:relative;transition:background .3s}
+.step:last-child{border:0}
+.step:hover{background:var(--card)}
+.step b{font-family:var(--display);font-size:70px;font-weight:400;color:#262633;line-height:1;transition:color .3s}
+.step:hover b{color:var(--accent)}
+.step h4{font-family:var(--display);font-size:28px;font-weight:400;letter-spacing:1.5px;margin:6px 0}
+.step p{color:var(--mute);font-size:14px;font-weight:300}
+
+/* CONTACT */
+#contact{text-align:center;padding-bottom:80px}
+.big{font-family:var(--display);font-size:clamp(54px,12vw,190px);line-height:.9;letter-spacing:4px}
+.big em{font-family:var(--serif);color:var(--accent);font-style:italic;letter-spacing:0}
+.mail{display:inline-block;margin:34px 0;font-family:var(--mono);font-size:clamp(14px,2.4vw,24px);letter-spacing:2px;border-bottom:1px solid var(--accent);padding-bottom:6px;transition:color .3s}
+.mail:hover{color:var(--accent)}
+form{max-width:640px;margin:30px auto 0;display:grid;gap:14px;text-align:left}
+form input,form textarea,form select{width:100%;background:var(--card);border:1px solid var(--line);color:var(--text);padding:16px;font-family:var(--body);font-size:15px;outline:none;transition:border-color .25s}
+form input:focus,form textarea:focus,form select:focus{border-color:var(--accent)}
+form textarea{min-height:130px;resize:vertical}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:600px){.row{grid-template-columns:1fr}}
+.social{display:flex;gap:14px;justify-content:center;margin-top:50px;flex-wrap:wrap}
+.social a{font-family:var(--mono);font-size:12px;letter-spacing:2px;text-transform:uppercase;border:1px solid var(--line);padding:12px 22px;color:var(--mute);transition:.25s}
+.social a:hover{color:#000;background:var(--accent);border-color:var(--accent)}
+footer{border-top:1px solid var(--line);padding:26px 5vw;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--mute)}
+</style>
+</head>
+<body>
+
+<!-- ========= EASY EDIT AREA =========
+ 1. Search for "YOUR NAME" and put your real name.
+ 2. Put your photo as  me.jpg  in the same folder (About section picks it up automatically).
+ 3. Add your projects in the  WORKS  array at the bottom (title, category, link, thumbnail).
+ 4. Replace email / social links in the Contact section.
+==================================== -->
+
+<div class="grain"></div><div class="vignette"></div>
+<div class="cursor" id="cursor"></div>
+
+<div id="loader">
+  <div class="count" id="count">00</div>
+  <div class="bar"><i id="barfill"></i></div>
+  <small>RENDERING pro_edits · DELIVER PAGE</small>
+</div>
+
+<nav id="nav">
+  <a href="#home" class="logo">pro<span>_</span>edits</a>
+  <button class="burger" id="burger" aria-label="menu">☰</button>
+  <div class="links" id="links">
+    <a href="#about">About</a><a href="#work">Work</a><a href="#workflow">Workflow</a><a href="#skills">Skills</a><a href="#contact">Contact</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section id="home" class="bars">
+  <div class="hero-bg"></div>
+  <div class="rec"><i></i> REC · 24 FPS · 4K · DAVINCI RESOLVE</div>
+  <h1 class="hero-title" data-t="PRO_EDITS">PRO<b>_</b>EDITS</h1>
+  <div class="hero-sub"><span id="typed"></span><span class="caret"></span></div>
+  <p class="hero-p">Cinematic edits, colour grades and stories that hit different — cut and graded by hand in DaVinci Resolve.</p>
+  <div class="cta">
+    <a href="#work" class="btn solid">Watch my work</a>
+    <a href="#contact" class="btn">Let's collaborate</a>
+  </div>
+  <div class="scroll-cue"><span>SCROLL</span><i></i></div>
+  <div class="timecode" id="tc">00:00:00:00</div>
+</section>
+
+<div class="marquee"><div id="mq"></div></div>
+
+<!-- ABOUT -->
+<section id="about">
+  <div class="tag rv">The person behind the edits</div>
+  <h2 class="rv">Behind the <em>cut</em></h2>
+  <div class="about">
+    <div class="portrait rv">
+      <div class="frame"></div>
+      <div class="ph">
+        <span>PE</span>
+        <img src="DSC07750.jpg" alt="Portrait of the editor behind pro_edits" onerror="this.style.display='none'">
+      </div>
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="cap"><b>●</b> EDITOR · COLORIST · STORYTELLER</div>
+    </div>
+    <div class="about-text rv">
+      <p style="font-size:22px;color:var(--text)">Hi, I'm <strong>MANISH SETHI</strong> — the editor behind <strong>pro_edits</strong>.</p>
+      <p>I turn raw footage into moments you can feel. Every cut has a reason, every frame has a mood. I work in <strong>DaVinci Resolve</strong> — from the first rough assembly to the final colour grade and sound mix — so your story keeps one consistent, cinematic look from start to finish.</p>
+      <div class="quote">"The edit is where the film is really made."</div>
+      <p>Reels, short films, wedding highlights, music videos, brand content — if it moves, I love cutting it. I obsess over rhythm, transitions, colour and sound, because that's where ordinary clips become cinema.</p>
+      <div class="stats">
+        <div class="stat"><b data-n="100" data-s="+">0</b><small>Projects cut</small></div>
+        <div class="stat"><b data-n="2" data-s="+">0</b><small>Years editing</small></div>
+        <div class="stat"><b data-n="100" data-s="%">0</b><small>Passion</small></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WORK -->
+<section id="work">
+  <div class="work-head">
+    <div>
+      <div class="tag rv">Selected work</div>
+      <h2 class="rv">The <em>reel</em></h2>
+    </div>
+    <div class="filters rv" id="filters">
+      <button class="on" data-f="all">All</button>
+      <button data-f="reels">Reels</button>
+      <button data-f="cinematic">Cinematic</button>
+      <button data-f="music">Music video</button>
+      <button data-f="grade">Colour grade</button>
+    </div>
+  </div>
+  <div class="grid" id="grid"></div>
+  <p class="note">Tip: edit the <code>WORKS</code> list at the bottom of this file — add your YouTube / Drive / mp4 link and a thumbnail image for each project.</p>
+</section>
+
+<!-- DAVINCI WORKFLOW -->
+<section id="workflow">
+  <div class="tag rv">How I work</div>
+  <h2 class="rv">Built in <em>DaVinci Resolve</em></h2>
+  <div class="pages rv" id="pages"></div>
+  <div class="page-body rv" id="pagebody"></div>
+
+  <div class="timeline rv" id="tl">
+    <div class="head"><span>TIMELINE 1 · pro_edits_master</span><span>24 FPS · 3840×2160</span></div>
+    <div class="playhead"></div>
+    <div class="track"><label>V3</label><div class="lane"><div class="clip c-fx" style="left:12%;width:22%">TITLE · FUSION</div><div class="clip c-fx" style="left:70%;width:20%">LOWER THIRD</div></div></div>
+    <div class="track"><label>V2</label><div class="lane"><div class="clip c-v2" style="left:5%;width:18%">B-ROLL</div><div class="clip c-v2" style="left:40%;width:25%">SLOW-MO 120fps</div><div class="clip c-v2" style="left:78%;width:17%">CUTAWAY</div></div></div>
+    <div class="track"><label>V1</label><div class="lane"><div class="clip c-v" style="left:0;width:30%">A-CAM · GRADED</div><div class="clip c-v" style="left:31%;width:34%">INTERVIEW · LOG→REC709</div><div class="clip c-v" style="left:66%;width:34%">FINAL SCENE</div></div></div>
+    <div class="track"><label>A1</label><div class="lane"><div class="clip c-a" style="left:0;width:48%">DIALOGUE · EQ + NOISE REDUCTION</div><div class="clip c-a" style="left:50%;width:50%">SCORE · DUCKED</div></div></div>
+    <div class="track"><label>A2</label><div class="lane"><div class="clip c-a" style="left:10%;width:12%">WHOOSH</div><div class="clip c-a" style="left:38%;width:10%">IMPACT</div><div class="clip c-a" style="left:72%;width:14%">AMBIENCE</div></div></div>
+  </div>
+</section>
+
+<!-- SKILLS -->
+<section id="skills">
+  <div class="tag rv">What I do</div>
+  <h2 class="rv">Craft & <em>skills</em></h2>
+  <div class="skills" id="skillgrid"></div>
+  <div class="tools rv">
+    <span>DaVinci Resolve</span><span>Fusion</span><span>Fairlight</span><span>Color Page</span><span>LUTs</span><span>Motion Graphics</span><span>Sound Design</span><span>Speed Ramps</span><span>Masking & Tracking</span><span>4K Delivery</span>
+  </div>
+</section>
+
+<!-- PROCESS -->
+<section id="process" style="padding-top:0">
+  <div class="tag rv">Process</div>
+  <h2 class="rv">From <em>raw</em> to release</h2>
+  <div class="steps rv">
+    <div class="step"><b>01</b><h4>Brief</h4><p>We talk vision, mood, references and deadline.</p></div>
+    <div class="step"><b>02</b><h4>Assemble</h4><p>Footage synced, organised and rough-cut on the Cut & Edit pages.</p></div>
+    <div class="step"><b>03</b><h4>Craft</h4><p>Rhythm, transitions, motion graphics and sound design.</p></div>
+    <div class="step"><b>04</b><h4>Grade</h4><p>Cinematic colour grading for a signature look.</p></div>
+    <div class="step"><b>05</b><h4>Deliver</h4><p>Exported in the perfect format for your platform.</p></div>
+  </div>
+</section>
+
+<!-- CONTACT -->
+<section id="contact">
+  <div class="tag rv" style="justify-content:center">Let's create</div>
+  <div class="big rv">Got a story?<br><em>Let's cut it.</em></div>
+  <a class="mail rv" href="mailto:manishsethy123@gmail.com">manishsethy123@gmail.com</a>
+  <div class="rv" style="font-family:var(--mono);letter-spacing:2px;color:var(--mute);font-size:14px;margin-bottom:10px">
+    <a href="tel:+919777072683" style="color:var(--text)">📞 +91 97770 72683</a>
+    &nbsp;·&nbsp;
+    <a href="https://instagram.com/pro_edits_0001" target="_blank" rel="noopener" style="color:var(--text)">📸 @pro_edits_0001</a>
+  </div>
+  <form class="rv" id="form">
+    <div class="row"><input id="fn" placeholder="Your name" required><input id="fe" type="email" placeholder="Your email" required></div>
+    <select id="ft"><option>Reel / Short-form edit</option><option>Cinematic video</option><option>Music video</option><option>Wedding / Event</option><option>Colour grading</option><option>Other</option></select>
+    <textarea id="fm" placeholder="Tell me about your project…" required></textarea>
+    <button class="btn solid" type="submit">Send message</button>
+  </form>
+  <div class="social rv">
+    <a href="https://instagram.com/pro_edits_0001" target="_blank" rel="noopener">Instagram</a>
+    <a href="https://wa.me/919777072683" target="_blank" rel="noopener">WhatsApp</a>
+    <a href="tel:+919777072683">Call</a>
+    <a href="mailto:manishsethy123@gmail.com">Email</a>
+  </div>
+</section>
+
+<footer><span>© <span id="yr"></span> PRO_EDITS</span><span>CUT & GRADED IN DAVINCI RESOLVE</span></footer>
+
+<!-- video modal -->
+<div class="modal" id="modal"><div class="box"><button class="x" id="mx">×</button><div class="vid" id="mv"></div><h4 id="mt"></h4></div></div>
+
+<script>
+/* =============== YOUR CONTENT — EDIT HERE =============== */
+const EMAIL = "manishsethy123@gmail.com";
+
+const WORKS = [
+  // cat: reels | cinematic | music | grade     link: YouTube watch/embed URL, or a .mp4 path/URL, or "" for none
+  {title:"FOLLOWING THE TREND",cat:"cinematic", tag:"Cinematic",   dur:"1:24", link:"trend.MP4", thumb:"", cls:"t1"},
+  {title:"CRICKET",cat:"reels", tag:"reels",   dur:"1:24", link:"editytgg.MP4", thumb:"", cls:"t1"},
+  {title:"RAW VS GRADED", cat:"grade",tag:"Colour grade",dur:"0:58", link:"Timeline 1.mp4", thumb:"", cls:"t3"},
+  {title:"INTRO",cat:"WEDDING", tag:"Short film",  dur:"4:40", link:"WhatsApp Video 2026-10-03 at 7.45.02 PM.MP4", thumb:"", cls:"t4"},
+  {title:"TEXT ANIMATION",    cat:"text animation", tag:"TEXT ANIMATION",  dur:"4:40", link:"jbhjdf.mp4", thumb:"", cls:"t4"},
+  {title:"su-57",cat:"reels", tag:"reels",   dur:"1:24", link:"bfyefyhe.MP4", thumb:"", cls:"t1"},
+];
+
+const SKILLS = [
+  {ic:"🎬", n:"Video Editing",     d:"Story-driven cuts, pacing, J/L-cuts, speed ramps and smooth transitions.", v:95},
+  {ic:"🎨", n:"Colour Grading",    d:"Node-based grading on the Color page — log conversion, looks, skin tones.", v:90},
+  {ic:"✨", n:"Motion & VFX",       d:"Titles, lower-thirds, tracking and compositing in Fusion.", v:80},
+  {ic:"🎧", n:"Sound Design",       d:"Dialogue clean-up, music ducking, SFX and mixing in Fairlight.", v:85},
+];
+
+const PAGES = [
+  {ic:"🗂", n:"Media",   t:"Organised from the start", p:"Footage is ingested, synced and tagged so nothing gets lost on big projects.", l:["Bins & metadata","Proxy workflow","Audio sync"]},
+  {ic:"✂️", n:"Cut",     t:"Fast rough cuts", p:"The quick assembly pass — find the story and the rhythm before polishing.", l:["Fast review","Source tape","Sync bin"]},
+  {ic:"🎞", n:"Edit",    t:"Precision storytelling", p:"Frame-accurate trimming, transitions, speed ramps and layered timelines.", l:["Multi-track timeline","Retime curves","Adjustment clips"]},
+  {ic:"🌀", n:"Fusion",  t:"Motion graphics & VFX", p:"Custom titles, tracking, clean-ups and compositing built node by node.", l:["Node compositing","Planar tracking","3D text"]},
+  {ic:"🎨", n:"Color",   t:"The cinematic look", p:"Primary & secondary grading, power windows, curves and film-style LUTs.", l:["Colour wheels","Scopes","Power windows","Look design"]},
+  {ic:"🎧", n:"Fairlight",t:"Sound that hits", p:"Noise reduction, EQ, ducking and a full mix so the audio feels as good as the picture.", l:["Voice isolation","EQ & dynamics","Mixing"]},
+  {ic:"🚀", n:"Deliver", t:"Ready for any platform", p:"Optimised exports for Instagram, YouTube, cinema or client review.", l:["4K / 1080p","Vertical 9:16","H.264 / ProRes"]},
+];
+
+/* =============== CODE =============== */
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+$('#yr').textContent=new Date().getFullYear();
+
+/* loader */
+(function(){
+  let n=0; const c=$('#count'), b=$('#barfill');
+  const t=setInterval(()=>{n+=Math.ceil(Math.random()*9);if(n>=100){n=100;clearInterval(t);setTimeout(()=>{$('#loader').classList.add('done');},350)}
+    c.textContent=String(n).padStart(2,'0');b.style.width=n+'%'},70);
+})();
+
+/* nav */
+addEventListener('scroll',()=>$('#nav').classList.toggle('scrolled',scrollY>40));
+$('#burger').onclick=()=>$('#links').classList.toggle('open');
+$$('#links a').forEach(a=>a.onclick=()=>$('#links').classList.remove('open'));
+
+/* cursor */
+const cur=$('#cursor');
+addEventListener('mousemove',e=>{cur.style.left=e.clientX+'px';cur.style.top=e.clientY+'px'});
+document.addEventListener('mouseover',e=>{cur.classList.toggle('hover',!!e.target.closest('a,button,.card,.skill,input,textarea,select'))});
+
+/* typing */
+(function(){
+  const words=["Editor · Colorist · Storyteller","Cinematic edits that feel like film","Cut & graded in DaVinci Resolve"];
+  let w=0,i=0,del=false; const el=$('#typed');
+  (function tick(){
+    const full=words[w]; el.textContent=full.slice(0,i);
+    if(!del&&i===full.length){del=true;return setTimeout(tick,1600)}
+    if(del&&i===0){del=false;w=(w+1)%words.length}
+    i+=del?-1:1; setTimeout(tick,del?25:55);
+  })();
+})();
+
+/* timecode */
+(function(){
+  const el=$('#tc'); const start=Date.now();
+  setInterval(()=>{const ms=Date.now()-start;const f=Math.floor(ms/1000*24)%24,s=Math.floor(ms/1000)%60,m=Math.floor(ms/60000)%60,h=Math.floor(ms/3600000);
+    const p=x=>String(x).padStart(2,'0'); el.textContent=`${p(h)}:${p(m)}:${p(s)}:${p(f)}`},41);
+})();
+
+/* marquee */
+(function(){
+  const w=["CINEMATIC","COLOUR GRADE","STORYTELLING","DAVINCI RESOLVE","MOTION","SOUND DESIGN","REELS"];
+  const row=w.map(x=>`<span>${x} <b>✦</b></span>`).join('');
+  $('#mq').innerHTML=row+row;
+})();
+
+/* work grid */
+const grid=$('#grid');
+WORKS.forEach((w,i)=>{
+  const d=document.createElement('div');
+  d.className='card rv'; d.dataset.cat=w.cat; d.style.transitionDelay=(i%3)*.1+'s';
+  d.innerHTML=`<div class="thumb ${w.thumb?'':w.cls}">${w.thumb?`<img src="${w.thumb}" alt="${w.title}" loading="lazy">`:''}</div>
+    <span class="dur">${w.dur}</span><div class="play"></div>
+    <div class="info"><small>${w.tag}</small><h3>${w.title}</h3></div>`;
+  d.onclick=()=>openModal(w); grid.appendChild(d);
+});
+$$('#filters button').forEach(b=>b.onclick=()=>{
+  $$('#filters button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  $$('.card').forEach(c=>c.classList.toggle('hide',b.dataset.f!=='all'&&c.dataset.cat!==b.dataset.f));
+});
+
+/* modal player */
+const modal=$('#modal'), mv=$('#mv');
+function embed(url){
+  const yt=url.match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/);
+  if(yt) return `<iframe src="https://www.youtube.com/embed/${yt[1]}?autoplay=1&rel=0" allow="autoplay;fullscreen" allowfullscreen></iframe>`;
+  if(/\.(mp4|webm|mov)(\?|$)/i.test(url)) return `<video src="${url}" controls autoplay></video>`;
+  return `<iframe src="${url}" allow="autoplay;fullscreen" allowfullscreen></iframe>`;
+}
+function openModal(w){
+  mv.innerHTML=w.link?embed(w.link):`Add your video link for "<b style="color:#fff">${w.title}</b>" in the WORKS list<br>(YouTube, Google Drive preview or .mp4)`;
+  $('#mt').textContent=w.title; modal.classList.add('open');
+}
+function closeModal(){modal.classList.remove('open');mv.innerHTML=''}
+$('#mx').onclick=closeModal; modal.onclick=e=>{if(e.target===modal)closeModal()};
+addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+
+/* DaVinci pages */
+const visuals={
+  Media:`<svg viewBox="0 0 400 250"><g fill="#15151d" stroke="#2a2a36">${[0,1,2,3,4,5].map(i=>`<rect x="${20+(i%3)*125}" y="${20+Math.floor(i/3)*105}" width="110" height="90" rx="3"/>`).join('')}</g><g fill="#ff4d2e" opacity=".7">${[0,1,2,3,4,5].map(i=>`<rect x="${28+(i%3)*125}" y="${28+Math.floor(i/3)*105}" width="94" height="52"/>`).join('')}</g></svg>`,
+  Cut:`<svg viewBox="0 0 400 250"><rect x="20" y="20" width="360" height="130" fill="#15151d" stroke="#2a2a36"/><polygon points="170,60 170,110 215,85" fill="#ff4d2e"/><rect x="20" y="170" width="360" height="60" fill="#10101a"/>${[0,1,2,3,4,5,6,7].map(i=>`<rect x="${26+i*44}" y="176" width="40" height="48" fill="${i%2?'#ffb340':'#ff4d2e'}" opacity=".75"/>`).join('')}</svg>`,
+  Edit:`<svg viewBox="0 0 400 250"><rect x="20" y="20" width="170" height="100" fill="#15151d" stroke="#2a2a36"/><rect x="210" y="20" width="170" height="100" fill="#15151d" stroke="#2a2a36"/><polygon points="95,50 95,90 125,70" fill="#ff4d2e"/><polygon points="285,50 285,90 315,70" fill="#2fd4c4"/><rect x="20" y="140" width="360" height="26" fill="#ff4d2e" opacity=".8"/><rect x="20" y="172" width="260" height="26" fill="#ffb340" opacity=".8"/><rect x="20" y="204" width="330" height="26" fill="#2fd4c4" opacity=".8"/></svg>`,
+  Fusion:`<svg viewBox="0 0 400 250"><g stroke="#555" fill="none"><path d="M90 60 H170 V125 H250"/><path d="M90 190 H170 V125"/><path d="M250 125 H310"/></g><g><rect x="50" y="42" width="60" height="36" rx="4" fill="#8a5cff"/><rect x="50" y="172" width="60" height="36" rx="4" fill="#ff4d2e"/><rect x="140" y="107" width="60" height="36" rx="4" fill="#ffb340"/><rect x="220" y="107" width="60" height="36" rx="4" fill="#2fd4c4"/><rect x="300" y="107" width="60" height="36" rx="4" fill="#fff"/></g></svg>`,
+  Color:`<svg viewBox="0 0 400 250"><g>${[['#ff4d2e',80],['#2fd4c4',200],['#ffb340',320]].map(([c,x])=>`<circle cx="${x}" cy="85" r="52" fill="none" stroke="#333" stroke-width="2"/><circle cx="${x}" cy="85" r="52" fill="none" stroke="${c}" stroke-width="6" stroke-dasharray="90 240"/><circle cx="${x+20}" cy="70" r="6" fill="#fff"/>`).join('')}</g><polyline points="20,230 70,215 120,225 170,190 220,200 270,170 320,185 380,150" fill="none" stroke="#2fd4c4" stroke-width="2"/><polyline points="20,235 70,225 120,215 170,220 220,185 270,195 320,160 380,170" fill="none" stroke="#ff4d2e" stroke-width="2"/></svg>`,
+  Fairlight:`<svg viewBox="0 0 400 250"><g>${Array.from({length:44},(_,i)=>{const h=15+Math.abs(Math.sin(i*.7)*60)+Math.abs(Math.cos(i*1.9)*30);return `<rect x="${20+i*8.3}" y="${125-h/2}" width="4" height="${h}" fill="#2fd4c4" opacity=".85"/>`}).join('')}</g><g>${[0,1,2,3].map(i=>`<rect x="${60+i*80}" y="190" width="14" height="50" fill="#222"/><rect x="${60+i*80}" y="${200-i*5}" width="14" height="${40+i*5}" fill="#ff4d2e"/>`).join('')}</g></svg>`,
+  Deliver:`<svg viewBox="0 0 400 250"><rect x="40" y="40" width="320" height="30" fill="#15151d" stroke="#2a2a36"/><rect x="40" y="40" width="230" height="30" fill="#ff4d2e"/><text x="52" y="60" fill="#000" font-family="monospace" font-size="14">RENDERING 72%</text><g font-family="monospace" font-size="13" fill="#8d8c95"><text x="40" y="115">Format: MP4 · H.264</text><text x="40" y="145">Resolution: 3840 × 2160</text><text x="40" y="175">Frame rate: 24 fps</text><text x="40" y="205">Audio: AAC 320 kbps</text></g></svg>`
+};
+const pagesEl=$('#pages'), pb=$('#pagebody');
+PAGES.forEach((p,i)=>{
+  const b=document.createElement('button'); b.innerHTML=`<span>${p.ic}</span>${p.n}`; b.onclick=()=>showPage(i); pagesEl.appendChild(b);
+});
+function showPage(i){
+  const p=PAGES[i];
+  $$('#pages button').forEach((b,j)=>b.classList.toggle('on',i===j));
+  pb.innerHTML=`<div><h3>${p.n} — ${p.t}</h3><p>${p.p}</p><ul>${p.l.map(x=>`<li>${x}</li>`).join('')}</ul></div><div class="vis">${visuals[p.n]}</div>`;
+}
+showPage(4);
+
+/* skills */
+const sg=$('#skillgrid');
+SKILLS.forEach((s,i)=>{
+  const d=document.createElement('div'); d.className='skill rv'; d.style.transitionDelay=i*.1+'s';
+  d.innerHTML=`<div class="ic">${s.ic}</div><h4>${s.n}</h4><p>${s.d}</p><div class="meter"><i data-w="${s.v}"></i></div>`;
+  sg.appendChild(d);
+});
+
+/* reveal + counters + meters + timeline */
+const io=new IntersectionObserver(es=>es.forEach(e=>{
+  if(!e.isIntersecting) return; const t=e.target; t.classList.add('in');
+  t.querySelectorAll('.meter i').forEach(m=>m.style.width=m.dataset.w+'%');
+  t.querySelectorAll('[data-n]').forEach(c=>{
+    const end=+c.dataset.n,suf=c.dataset.s||''; let n=0; const step=Math.max(1,Math.ceil(end/60));
+    const iv=setInterval(()=>{n=Math.min(end,n+step);c.textContent=n+suf;if(n>=end)clearInterval(iv)},25);
+  }); io.unobserve(t);
+}),{threshold:.15});
+$$('.rv').forEach(el=>io.observe(el));
+
+/* contact form -> opens email app */
+$('#form').onsubmit=e=>{
+  e.preventDefault();
+  const s=encodeURIComponent('pro_edits enquiry — '+$('#ft').value);
+  const b=encodeURIComponent(`Name: ${$('#fn').value}\nEmail: ${$('#fe').value}\n\n${$('#fm').value}`);
+  location.href=`mailto:${EMAIL}?subject=${s}&body=${b}`;
+};
+</script>
+</body>
+</html>
